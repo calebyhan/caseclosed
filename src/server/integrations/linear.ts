@@ -54,6 +54,7 @@ export class LinearAdapter implements EffectAdapter {
     if (result.status === 200 && !result.errors?.length && created?.id) {
       return { kind: "committed", externalId: String(created.id), result: created };
     }
+    throwIfAmbiguousMutation("issueCreate", result);
     return { kind: "rejected", retryable: isTransientStatus(result.status), error: this.error(result) };
   }
 
@@ -68,6 +69,7 @@ export class LinearAdapter implements EffectAdapter {
     if (result.status === 200 && !result.errors?.length && comment?.id) {
       return { kind: "committed", externalId: String(comment.id), result: comment };
     }
+    throwIfAmbiguousMutation("commentCreate", result);
     return { kind: "rejected", retryable: isTransientStatus(result.status), error: this.error(result) };
   }
 
@@ -95,6 +97,7 @@ export class LinearAdapter implements EffectAdapter {
     if (result.status === 200 && !result.errors?.length) {
       return { kind: "committed", externalId: effect.providerIdentity, result: { issue_id: issueId, label_ids: labelIds } };
     }
+    throwIfAmbiguousMutation("issueUpdate", result);
     return { kind: "rejected", retryable: isTransientStatus(result.status), error: this.error(result) };
   }
 
@@ -131,5 +134,12 @@ export class LinearAdapter implements EffectAdapter {
 
   private error(result: GraphResult): string {
     return result.errors?.map((item) => item.message).filter(Boolean).join("; ") || remoteError("Linear", result.status, result);
+  }
+}
+
+function throwIfAmbiguousMutation(operation: string, result: GraphResult): void {
+  if (result.status === 408 || result.status >= 500 || result.status === 200) {
+    const detail = result.errors?.map((item) => item.message).filter(Boolean).join("; ") || JSON.stringify(result.data ?? null).slice(0, 300);
+    throw new Error(`ambiguous Linear ${operation} write (HTTP ${result.status}): ${detail}`);
   }
 }

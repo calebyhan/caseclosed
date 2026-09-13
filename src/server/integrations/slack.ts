@@ -33,6 +33,9 @@ export class SlackEffectAdapter implements EffectAdapter {
     if (response.status >= 200 && response.status < 300 && body.ok && body.ts) {
       return { kind: "committed", externalId: body.ts, result: { ts: body.ts, channel: body.channel ?? channel } };
     }
+    if (response.status === 408 || response.status >= 500 || (response.status >= 200 && response.status < 300 && body.ok !== false)) {
+      throw new Error(`ambiguous Slack write: ${remoteError("Slack", response.status, body)}`);
+    }
     return { kind: "rejected", retryable: isTransientStatus(response.status) || body.error === "ratelimited", error: remoteError("Slack", response.status, body) };
   }
 

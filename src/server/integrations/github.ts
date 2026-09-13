@@ -44,6 +44,9 @@ export class GitHubAdapter implements EffectAdapter {
     const response = await this.api(`/repos/${repository}/issues/${pr}/comments`, { body }, "POST");
     const value = response.body as Record<string, unknown>;
     if (response.status === 201 && value.id) return { kind: "committed", externalId: String(value.id), result: value };
+    if (response.status === 408 || response.status >= 500 || (response.status >= 200 && response.status < 300)) {
+      throw new Error(`ambiguous GitHub write: ${remoteError("GitHub", response.status, value)}`);
+    }
     return { kind: "rejected", retryable: isTransientStatus(response.status), error: remoteError("GitHub", response.status, value) };
   }
 

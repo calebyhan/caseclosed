@@ -1,14 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import type { BillingPeriod } from "../../../server/fixture";
+
+const subscribeToHydration = () => () => {};
 
 export function BillingForm({ currentPeriod }: { currentPeriod: BillingPeriod }) {
   const router = useRouter();
   const [period, setPeriod] = useState<BillingPeriod>(currentPeriod);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
 
   async function upgrade(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,7 +32,9 @@ export function BillingForm({ currentPeriod }: { currentPeriod: BillingPeriod })
     if (outcome.kind === "unchanged") {
       setSubmitting(false);
       setMessage(`You are already billed ${period}.`);
+      return;
     }
+    if (outcome.clear_spinner === true) setSubmitting(false);
   }
 
   return (
@@ -57,7 +62,7 @@ export function BillingForm({ currentPeriod }: { currentPeriod: BillingPeriod })
           Annual
         </label>
       </fieldset>
-      <button type="submit" disabled={submitting}>
+      <button type="submit" disabled={submitting || !hydrated}>
         Upgrade
       </button>
       {submitting ? <span role="status" aria-label="Loading" className="spinner" /> : null}

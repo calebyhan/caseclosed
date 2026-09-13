@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { BROWSER_JOB_TYPES, type JobType } from "../../contracts/lifecycle";
 import { sha256Hash } from "../../domain/identity";
 import { inTransaction, type Db, type Tx } from "../db/client";
@@ -96,7 +96,11 @@ function claimOnce(db: Db, types: readonly JobType[], now: number): ClaimOutcome
       const row = tx
         .select()
         .from(jobs)
-        .where(and(eq(jobs.status, "pending"), inArray(jobs.type, [...types])))
+        .where(and(
+          eq(jobs.status, "pending"),
+          inArray(jobs.type, [...types]),
+          or(isNull(jobs.runAfter), lte(jobs.runAfter, now)),
+        ))
         .orderBy(asc(jobs.seq))
         .get();
       if (!row) return { kind: "empty" };
@@ -199,8 +203,25 @@ export function settleJobInTx(tx: Tx, jobId: string, status: "completed" | "fail
 export function requeueJobInTx(tx: Tx, jobId: string, now: number): boolean {
   const result = tx
     .update(jobs)
-    .set({ status: "pending", startedAt: null, updatedAt: now })
+    .set({ status: "pending", startedAt: null, runAfter: null, updatedAt: now })
     .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")))
     .run();
+  return result.changes === 1;
+}
+
+/** Returns a failed/running delivery to the durable queue after backoff. */
+export function scheduleJobRetry(
+  db: Db,
+  jobId: string,
+  error: string,
+  runAfter: number,
+  now: number = Date.now(),
+): boolean {
+  const result = inTransaction(db, (tx) =>
+    tx.update(jobs)
+      .set({ status: "pending", lastError: error, startedAt: null, finishedAt: null, runAfter, updatedAt: now })
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")))
+      .run(),
+  );
   return result.changes === 1;
 }

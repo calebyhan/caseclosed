@@ -3,7 +3,25 @@ import { getAccount, saveAccount, type Account, type BillingPeriod } from "./fix
 
 type Price = { plan: "pro"; billing_period: BillingPeriod; amount_cents: number; interval: "month" | "year" };
 
-const PRICE_BOOK: Price[] = [{ plan: "pro", billing_period: "monthly", amount_cents: 2_000, interval: "month" }];
+/**
+ * The controlled staging target deliberately has three deployable revisions.
+ * This is build identity, not a runtime product toggle: the eval runner starts
+ * a fresh staging process for each revision and verifies the reported SHA.
+ */
+export type AcmeBuildVariant = "buggy" | "superficial" | "fixed";
+
+export function acmeBuildVariant(): AcmeBuildVariant {
+  if (process.env.ACME_BUILD_VARIANT && process.env.CASECLOSED_EVAL_MODE !== "1") {
+    throw new Error("ACME_BUILD_VARIANT is only available in explicit eval mode");
+  }
+  const value = process.env.ACME_BUILD_VARIANT ?? "buggy";
+  if (value === "buggy" || value === "superficial" || value === "fixed") return value;
+  throw new Error(`Unsupported ACME_BUILD_VARIANT: ${value}`);
+}
+
+const PRICE_BOOK: Price[] = [
+  { plan: "pro", billing_period: "monthly", amount_cents: 2_000, interval: "month" },
+];
 
 export const PlanChangeRequest = z.object({
   plan: z.literal("pro"),
@@ -28,6 +46,9 @@ export class PlanChangeError extends Error {
 }
 
 function priceFor(plan: "pro", period: BillingPeriod): Price {
+  if (period === "annual" && acmeBuildVariant() === "fixed") {
+    return { plan: "pro", billing_period: "annual", amount_cents: 20_000, interval: "year" };
+  }
   return PRICE_BOOK.find((price) => price.plan === plan && price.billing_period === period)!;
 }
 

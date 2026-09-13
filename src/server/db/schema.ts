@@ -285,6 +285,8 @@ export const jobs = sqliteTable(
     retryGeneration: integer("retry_generation").notNull().default(0),
     modelCalls: integer("model_calls").notNull().default(0),
     lastError: text("last_error"),
+    /** Earliest time a pending job may be claimed. */
+    runAfter: integer("run_after"),
     createdAt: createdAt(),
     updatedAt: integer("updated_at").notNull(),
     startedAt: integer("started_at"),

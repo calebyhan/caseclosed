@@ -205,4 +205,25 @@ describe("GeminiStepResolver", () => {
     assert.match(sent, /Yearly/);
     assert.equal(request.turns[0]!.parts.some((part) => "inlineData" in part), false);
   });
+
+  it("uses the configured fallback on the next persisted resolution after a provider failure", async () => {
+    const client = new FakeModelClient([
+      new ModelCallError("provider", "model provider error (HTTP 429)"),
+      JSON.stringify({ type: "click", role: "radio", name: "Annual" }),
+    ]);
+    const resolver = new GeminiStepResolver(client, models, [SECRET]);
+    const request = {
+      goal: fixture.goal,
+      step: fixture.steps[0]!,
+      stepIndex: 0,
+      totalSteps: 2,
+      currentPath: "/settings/billing",
+      accessibilitySnapshot: '- radio "Annual"',
+      appContext: ctx,
+      previousFailures: [],
+    };
+    await assert.rejects(() => resolver.resolve(request), ModelCallError);
+    await resolver.resolve(request);
+    assert.deepEqual(client.requests.map((entry) => entry.model), ["primary-model", "fallback-model"]);
+  });
 });

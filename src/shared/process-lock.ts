@@ -28,6 +28,8 @@ export type LockOptions = {
   isProcessAlive?: (pid: number) => boolean;
   /** An owner file still being written is treated as held for this long. */
   ownerlessGraceMs?: number;
+  /** Test seam invoked after a stale owner is observed, before atomic reclamation. */
+  onStaleObserved?: () => void;
 };
 
 export function isProcessAlive(pid: number): boolean {
@@ -64,6 +66,7 @@ export function acquireProcessLock(lockDir: string, name: string, options: LockO
       fs.mkdirSync(lockPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const inspected = fs.statSync(lockPath);
       const current = readOwner(lockPath);
       if (current === null) {
         const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
@@ -72,7 +75,31 @@ export function acquireProcessLock(lockDir: string, name: string, options: LockO
         // Liveness can only be checked on this host; a foreign owner is always respected.
         throw new LockHeldError(lockPath, current);
       }
-      fs.rmSync(lockPath, { recursive: true, force: true });
+      options.onStaleObserved?.();
+      // Never remove the path we inspected in place. Another contender could
+      // replace it between the liveness check and rmSync, causing us to delete
+      // that contender's live lock and admit two workers. Atomic rename makes
+      // exactly one contender the owner of the stale directory.
+      const stalePath = `${lockPath}.stale-${owner.token}`;
+      try {
+        fs.renameSync(lockPath, stalePath);
+      } catch (renameError) {
+        if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw renameError;
+      }
+      const moved = fs.statSync(stalePath);
+      if (moved.dev !== inspected.dev || moved.ino !== inspected.ino) {
+        // We moved a replacement created after our stale-owner check. Put it
+        // back when possible and fail closed; it is a live contender's lock.
+        try {
+          fs.renameSync(stalePath, lockPath);
+        } catch {
+          // Another contender already owns the canonical path. Preserve the
+          // moved lock for diagnosis rather than deleting a possibly live one.
+        }
+        throw new LockHeldError(lockPath, readOwner(lockPath) ?? readOwner(stalePath));
+      }
+      fs.rmSync(stalePath, { recursive: true, force: true });
       continue;
     }
     fs.writeFileSync(path.join(lockPath, "owner.json"), JSON.stringify(owner));

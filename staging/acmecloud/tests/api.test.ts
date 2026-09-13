@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, beforeEach, describe, it } from "node:test";
 import { GET as getAccountRoute } from "../src/app/api/account/route";
 import { GET as health } from "../src/app/api/health/route";
+import { acmeBuildVariant } from "../src/server/billing";
 import { POST as subscription } from "../src/app/api/subscription/route";
 import { POST as reset } from "../src/app/api/test/reset/route";
 import { POST as createSession } from "../src/app/api/test/session/route";
@@ -125,5 +126,24 @@ describe("GET /api/health", () => {
     const body = await response.json();
     assert.equal(typeof body.commit_sha, "string");
     assert.equal(typeof body.build, "string");
+  });
+});
+
+describe("eval-only build identity", () => {
+  it("rejects behavior overrides unless explicit eval mode is active", () => {
+    const previousMode = process.env.CASECLOSED_EVAL_MODE;
+    const previousVariant = process.env.ACME_BUILD_VARIANT;
+    try {
+      delete process.env.CASECLOSED_EVAL_MODE;
+      process.env.ACME_BUILD_VARIANT = "fixed";
+      assert.throws(() => acmeBuildVariant(), /only available in explicit eval mode/);
+      process.env.CASECLOSED_EVAL_MODE = "1";
+      assert.equal(acmeBuildVariant(), "fixed");
+    } finally {
+      if (previousMode === undefined) delete process.env.CASECLOSED_EVAL_MODE;
+      else process.env.CASECLOSED_EVAL_MODE = previousMode;
+      if (previousVariant === undefined) delete process.env.ACME_BUILD_VARIANT;
+      else process.env.ACME_BUILD_VARIANT = previousVariant;
+    }
   });
 });

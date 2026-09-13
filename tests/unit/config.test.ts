@@ -17,6 +17,11 @@ describe("loadConfig", () => {
     assert.equal(config.publicBaseUrl, "https://cc.example.com");
   });
 
+  it("ignores the repository variable GitHub Actions injects when credentials are absent", () => {
+    const config = loadConfig({ GITHUB_REPOSITORY: "acme/caseclosed" });
+    assert.equal(config.github, null);
+  });
+
   it("fails with actionable messages for invalid values", () => {
     assert.throws(
       () => loadConfig({ PUBLIC_BASE_URL: "not a url", STAGING_TEST_SECRET: "short" }),

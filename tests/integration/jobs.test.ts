@@ -189,6 +189,41 @@ describe("worker", () => {
     assert.match(messages[0]!, /provider unavailable/);
   });
 
+  it("finalizes a claimed browser run as INCONCLUSIVE when its handler throws", async () => {
+    const { db } = testDb.handle;
+    const { caseId } = caseWithSpec(db);
+    const worker = new JobWorker(db, {
+      reproduce: async () => Promise.reject(new Error("unexpected browser service failure")),
+    });
+
+    assert.equal(await worker.runOnce(), true);
+    const run = db.select().from(runs).where(eq(runs.caseId, caseId)).get()!;
+    const job = db.select().from(jobs).where(eq(jobs.runId, run.id)).get()!;
+    assert.equal(run.status, "completed");
+    assert.equal(run.result, "INCONCLUSIVE");
+    assert.equal(run.infraErrorReason, "browser_crashed");
+    assert.equal(job.status, "failed");
+    assert.equal(statusOf(db, caseId), "REPRO_INCONCLUSIVE");
+  });
+
+  it("durably reschedules retryable external delivery instead of stranding its intent", async () => {
+    const { db } = testDb.handle;
+    intake(db);
+    const worker = new JobWorker(db, {
+      deliver_effect: async () => Promise.reject(new Error("provider timeout")),
+    });
+
+    assert.equal(await worker.runOnce(), true);
+    const effectJob = db.select().from(jobs).where(eq(jobs.type, "deliver_effect")).get()!;
+    assert.equal(effectJob.status, "pending");
+    assert.match(effectJob.lastError!, /provider timeout/);
+    assert.ok(effectJob.runAfter && effectJob.runAfter > Date.now());
+    assert.equal(claimNext(db, ["deliver_effect"], effectJob.runAfter - 1), null);
+    const retried = claimNext(db, ["deliver_effect"], effectJob.runAfter);
+    assert.equal(retried?.id, effectJob.id);
+    assert.equal(retried?.attemptCount, 2);
+  });
+
   it("drains the queue in its loop and stops cleanly", async () => {
     const { db } = testDb.handle;
     intake(db);
@@ -214,5 +249,26 @@ describe("worker singleton lock", () => {
     assert.throws(() => acquireProcessLock(lockDir, "worker"), LockHeldError);
     reclaimed.release();
     acquireProcessLock(lockDir, "worker").release();
+  });
+
+  it("cannot delete a contender's live lock while reclaiming a stale owner", () => {
+    const lockDir = path.join(testDb.dir, "locks-race");
+    const stale = acquireProcessLock(lockDir, "worker");
+    let winner: ReturnType<typeof acquireProcessLock> | null = null;
+    let livenessChecks = 0;
+
+    assert.throws(
+      () => acquireProcessLock(lockDir, "worker", {
+        isProcessAlive: () => livenessChecks++ > 0,
+        onStaleObserved: () => {
+          winner ??= acquireProcessLock(lockDir, "worker", { isProcessAlive: () => false });
+        },
+      }),
+      LockHeldError,
+    );
+    assert.ok(winner);
+    assert.throws(() => acquireProcessLock(lockDir, "worker"), LockHeldError);
+    stale.release();
+    (winner as ReturnType<typeof acquireProcessLock>).release();
   });
 });

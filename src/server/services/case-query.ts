@@ -13,6 +13,7 @@ import {
   type TimelineEntry,
 } from "../../contracts/lifecycle";
 import type { Executor } from "../db/client";
+import type { RunObservations } from "../../contracts/run";
 import {
   assertionResults,
   browserActions,
@@ -136,7 +137,9 @@ export function getCaseDetail(ex: Executor, caseId: string): CaseDetail | null {
           created_at: plan.createdAt,
         }
       : null,
-    runs: runRows.map((run) => ({
+    runs: runRows.map((run) => {
+      const observations = parseObservations(run.observationsJson);
+      return {
       id: run.id,
       run_type: run.runType as RunType,
       status: run.status as RunStatus,
@@ -172,6 +175,7 @@ export function getCaseDetail(ex: Executor, caseId: string): CaseDetail | null {
           expected: check.expected,
           observed: check.observed,
         })),
+      console_events: observations?.console.map(({ level, text }) => ({ level, text })) ?? [],
       evidence: evidenceRows
         .filter((item) => item.runId === run.id)
         .map((item) => ({
@@ -181,7 +185,8 @@ export function getCaseDetail(ex: Executor, caseId: string): CaseDetail | null {
           relative_path: item.relativePath,
           sha256: item.sha256,
         })),
-    })),
+      };
+    }),
     fix_attempts: ex
       .select()
       .from(fixAttempts)
@@ -233,6 +238,16 @@ export function getCaseDetail(ex: Executor, caseId: string): CaseDetail | null {
     })),
     live: !TERMINAL_STATUSES.has(status) || unsettledWork,
   };
+}
+
+function parseObservations(value: string | null): RunObservations | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<RunObservations>;
+    return Array.isArray(parsed.console) ? (parsed as RunObservations) : null;
+  } catch {
+    return null;
+  }
 }
 
 export type CaseSummary = { id: string; status: CaseStatus; report: string; created_at: number; updated_at: number };

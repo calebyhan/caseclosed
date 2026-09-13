@@ -165,6 +165,7 @@ export type CaseDetail = {
       expected: string;
       observed: string;
     }>;
+    console_events: Array<{ level: string; text: string }>;
     evidence: Array<{ id: string; kind: string; mime_type: string; relative_path: string; sha256: string | null }>;
   }>;
   fix_attempts: Array<{

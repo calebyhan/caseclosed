@@ -149,4 +149,24 @@ describe("delivery", () => {
     const links = db.select().from(externalLinks).where(eq(externalLinks.caseId, caseId)).get()!;
     assert.equal(links.linearIssueId, loadEffect(db, `linear:create:${caseId}`)!.externalId);
   });
+
+  it("reconciles an external success when dependent local persistence fails", async () => {
+    const { db } = testDb.handle;
+    ensure(db, linearCreate());
+    const first = new ClientIdAdapter(store);
+    await assert.rejects(
+      deliverEffect(db, "linear:create:CC-0042", first, {
+        onCompleted: () => { throw new Error("local projection write failed"); },
+      }),
+      /local projection write failed/,
+    );
+    assert.equal(store.all().length, 1, "the remote write committed before local persistence failed");
+    assert.equal(loadEffect(db, "linear:create:CC-0042")!.status, "sending");
+
+    const retry = new ClientIdAdapter(store);
+    const recovered = await deliverEffect(db, "linear:create:CC-0042", retry);
+    assert.equal(recovered.status, "completed");
+    assert.equal(retry.sendCalls, 0, "recovery reconciles the provider identity instead of creating twice");
+    assert.equal(store.all().length, 1);
+  });
 });

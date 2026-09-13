@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-13T21:48:41.216Z",
+  "suite": "CaseClosed reliability evaluation",
+  "passed": true,
+  "results": [
+    {
+      "id": 1,
+      "name": "Real billing bug",
+      "expected": "REPRODUCED",
+      "actual": "REPRODUCED",
+      "pass": true,
+      "duration_ms": 7150,
+      "details": {
+        "actual": "REPRODUCED",
+        "case_status": "WAITING_FOR_FIX",
+        "linear_issues": 1,
+        "slack_messages": 3,
+        "spec_valid": true
+      }
+    },
+    {
+      "id": 2,
+      "name": "Same flow after actual fix",
+      "expected": "VERIFIED_FIXED",
+      "actual": "VERIFIED_FIXED",
+      "pass": true,
+      "duration_ms": 13224,
+      "details": {
+        "actual": "VERIFIED_FIXED",
+        "case_status": "VERIFIED_FIXED",
+        "original_spec_replayed": true,
+        "model_calls": 0,
+        "verification_side_effects": 4,
+        "backend_status": "POST /api/subscription → 200",
+        "checkout_assertion_passed": true,
+        "spec_valid": true
+      }
+    },
+    {
+      "id": 3,
+      "name": "Superficial UI fix; backend still broken",
+      "expected": "STILL_BROKEN",
+      "actual": "STILL_BROKEN",
+      "pass": true,
+      "duration_ms": 12871,
+      "details": {
+        "actual": "STILL_BROKEN",
+        "case_status": "WAITING_FOR_FIX",
+        "original_spec_replayed": true,
+        "model_calls": 0,
+        "verification_side_effects": 4,
+        "backend_status": "POST /api/subscription → 500",
+        "checkout_assertion_passed": false,
+        "spec_valid": true
+      }
+    },
+    {
+      "id": 4,
+      "name": "Ambiguous report",
+      "expected": "INCONCLUSIVE",
+      "actual": "INCONCLUSIVE",
+      "pass": true,
+      "duration_ms": 10,
+      "details": {
+        "actual": "INCONCLUSIVE",
+        "case_status": "SPEC_FAILED",
+        "missing": [
+          "the page and action that fail",
+          "the expected outcome"
+        ],
+        "linear_issues": 0
+      }
+    },
+    {
+      "id": 5,
+      "name": "Staging unavailable",
+      "expected": "INCONCLUSIVE",
+      "actual": "INCONCLUSIVE",
+      "pass": true,
+      "duration_ms": 17,
+      "details": {
+        "actual": "INCONCLUSIVE",
+        "case_status": "REPRO_INCONCLUSIVE",
+        "infra_error_reason": "staging_unreachable",
+        "linear_issues": 0,
+        "spec_valid": true
+      }
+    },
+    {
+      "id": 6,
+      "name": "Duplicate Slack event",
+      "expected": "ONE_CASE",
+      "actual": "ONE_CASE",
+      "pass": true,
+      "duration_ms": 8,
+      "details": {
+        "actual": "ONE_CASE",
+        "cases": 1,
+        "slack_threads": 1,
+        "root_effect_rows": 1,
+        "duplicate_side_effects": 0
+      }
+    },
+    {
+      "id": 7,
+      "name": "Interrupted Linear response",
+      "expected": "ONE_ISSUE",
+      "actual": "ONE_ISSUE",
+      "pass": true,
+      "duration_ms": 9,
+      "details": {
+        "actual": "ONE_ISSUE",
+        "linear_issues": 1,
+        "retry_send_calls": 0,
+        "ledger_status": "completed",
+        "duplicate_side_effects": 0
+      }
+    },
+    {
+      "id": 8,
+      "name": "Duplicate GitHub merge webhook",
+      "expected": "ONE_VERIFICATION",
+      "actual": "ONE_VERIFICATION",
+      "pass": true,
+      "duration_ms": 32,
+      "details": {
+        "actual": "ONE_VERIFICATION",
+        "verification_jobs_after_duplicate": 1,
+        "first_sha_attempts": 1,
+        "duplicate_merge_was_noop": true,
+        "new_sha_after_still_broken_accepted": true,
+        "verification_side_effect_rows": 4,
+        "duplicate_side_effects": 0
+      }
+    }
+  ],
+  "metrics": {
+    "reproduction_classification_accuracy": {
+      "correct": 2,
+      "total": 2,
+      "rate": 1
+    },
+    "verification_accuracy": {
+      "correct": 2,
+      "total": 2,
+      "rate": 1
+    },
+    "false_verified_fixed_count": 0,
+    "duplicate_external_side_effects": 0,
+    "correct_inconclusive_classification": {
+      "correct": 2,
+      "total": 2,
+      "rate": 1
+    },
+    "reprospec_validation_success": {
+      "valid": 4,
+      "total": 4,
+      "rate": 1
+    },
+    "model_calls_during_verification": 0,
+    "golden_path_e2e_success": {
+      "passed": 3,
+      "total": 3,
+      "rate": 1
+    },
+    "seeded_eval_accuracy": {
+      "correct": 8,
+      "total": 8,
+      "rate": 1
+    }
+  },
+  "failed_scenarios": [],
+  "highest_risk_remaining_failure_mode": "Model-generated ReproSpec sufficiency and semantic quality are not exercised against a live model in this deterministic suite."
+}

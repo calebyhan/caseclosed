@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `run_after` integer;

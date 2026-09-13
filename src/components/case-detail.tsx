@@ -1,11 +1,21 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { CaseDetail } from "../contracts/lifecycle";
 import { ReproSpec } from "../contracts/repro";
 import { formatDuration, formatTimestamp, StatusBadge } from "./status";
 
 const POLL_INTERVAL_MS = 2_000;
+
+const DEMO_PHASES = [
+  { label: "Report", statuses: ["RECEIVED", "SPEC_CREATED", "SPEC_FAILED"] },
+  { label: "Reproduced", statuses: ["REPRODUCING", "REPRODUCED", "NOT_REPRODUCED", "REPRO_INCONCLUSIVE"] },
+  { label: "Engineering issue", statuses: ["ISSUE_FILED", "WAITING_FOR_FIX"] },
+  { label: "Fix deployed", statuses: ["FIX_MERGED", "WAITING_FOR_DEPLOYMENT"] },
+  { label: "Same test rerun", statuses: ["VERIFYING", "STILL_BROKEN", "VERIFICATION_INCONCLUSIVE"] },
+  { label: "Verified fixed", statuses: ["VERIFIED_FIXED"] },
+] as const;
 
 export function CaseDetailView({ initial }: { initial: CaseDetail }) {
   const [detail, setDetail] = useState(initial);
@@ -46,6 +56,7 @@ export function CaseDetailView({ initial }: { initial: CaseDetail }) {
         </div>
         {pollError ? <p className="error-banner">Live updates failed ({pollError}); showing last loaded state.</p> : null}
         <blockquote className="report">{header.report}</blockquote>
+        <LifecycleProgress status={header.status} />
         <dl className="facts">
           <dt>Environment</dt>
           <dd>{header.environment_id}</dd>
@@ -82,6 +93,24 @@ export function CaseDetailView({ initial }: { initial: CaseDetail }) {
       <LinksSection detail={detail} />
       <OperationsSection detail={detail} />
     </div>
+  );
+}
+
+function LifecycleProgress({ status }: { status: string }) {
+  const current = Math.max(0, DEMO_PHASES.findIndex((phase) => phase.statuses.some((value) => value === status)));
+  return (
+    <ol className="phase-track" aria-label="Case lifecycle">
+      {DEMO_PHASES.map((phase, index) => (
+        <li
+          key={phase.label}
+          className={`phase-step ${index < current ? "phase-complete" : index === current ? "phase-current" : ""}`}
+          aria-current={index === current ? "step" : undefined}
+        >
+          <span className="phase-dot" aria-hidden="true">{index < current ? "✓" : index + 1}</span>
+          <span>{phase.label}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -183,11 +212,13 @@ function SpecSection({ detail }: { detail: CaseDetail }) {
       )}
       {detail.plan ? (
         <>
-          <h3>Resolved plan</h3>
-          <p className="muted small">
-            Promoted from run <code>{detail.plan.source_run_id}</code> · <code>{detail.plan.plan_hash.slice(0, 19)}…</code>
-          </p>
-          <pre className="code">{JSON.stringify(detail.plan.plan, null, 2)}</pre>
+          <details>
+            <summary>Resolved browser plan</summary>
+            <p className="muted small">
+              Promoted from run <code>{detail.plan.source_run_id}</code> · <code>{detail.plan.plan_hash.slice(0, 19)}…</code>
+            </p>
+            <pre className="code">{JSON.stringify(detail.plan.plan, null, 2)}</pre>
+          </details>
         </>
       ) : null}
     </section>
@@ -224,12 +255,17 @@ function RunsSection({ detail }: { detail: CaseDetail }) {
         {detail.runs.map((run) => (
           <article key={run.id} className="run-card">
             <header className="run-header">
-              <strong>{run.run_type}</strong>
+              <strong>{run.run_type === "reproduction" ? "REPRODUCTION" : "VERIFICATION"}</strong>
               {run.result ? <StatusBadge status={run.result} /> : <span className="badge badge-active">{run.status}</span>}
               <span className="muted small">
                 <code>{run.id}</code>
               </span>
             </header>
+            {run.run_type === "verification" ? (
+              <p className="same-test-note">
+                ↻ Original ReproSpec {run.plan_recovered ? "replayed with one recovered action" : "and resolved plan replayed"} · {run.model_calls} model calls
+              </p>
+            ) : null}
             <dl className="facts small">
               <dt>Duration</dt>
               <dd>
@@ -292,14 +328,23 @@ function RunsSection({ detail }: { detail: CaseDetail }) {
             ) : (
               <p className="muted small">No assertion results recorded.</p>
             )}
+            {run.console_events.filter((event) => event.level === "error").length > 0 ? (
+              <div className="console-callout small">
+                <strong>Console error</strong>
+                {run.console_events.filter((event) => event.level === "error").slice(0, 2).map((event, index) => (
+                  <code key={`${index}-${event.text}`}>{event.text}</code>
+                ))}
+              </div>
+            ) : null}
+            <EvidenceGallery evidence={run.evidence} runType={run.run_type} />
             {run.actions.length > 0 ? (
               <details>
                 <summary>Actions ({run.actions.length})</summary>
                 <pre className="code">{JSON.stringify(run.actions, null, 2)}</pre>
               </details>
             ) : null}
-            <details>
-              <summary>Evidence ({run.evidence.length})</summary>
+            <details className="raw-evidence">
+              <summary>All evidence files ({run.evidence.length})</summary>
               {run.evidence.length === 0 ? (
                 <p className="muted small">No evidence recorded.</p>
               ) : (
@@ -319,6 +364,41 @@ function RunsSection({ detail }: { detail: CaseDetail }) {
   );
 }
 
+function EvidenceGallery({
+  evidence: items,
+  runType,
+}: {
+  evidence: CaseDetail["runs"][number]["evidence"];
+  runType: "reproduction" | "verification";
+}) {
+  const screenshot = items.find((item) => item.kind === "screenshot" && item.relative_path.endsWith("failure.png"))
+    ?? items.find((item) => item.kind === "screenshot" && item.relative_path.endsWith("after.png"));
+  const network = items.find((item) => item.kind === "network");
+  const consoleEvidence = items.find((item) => item.kind === "console");
+  if (!screenshot && !network && !consoleEvidence) return null;
+  return (
+    <div className="evidence-summary">
+      {screenshot ? (
+        <a href={`/api/evidence/${screenshot.id}`} target="_blank" rel="noreferrer" className="evidence-image-link">
+          <Image
+            src={`/api/evidence/${screenshot.id}`}
+            alt={`${runType} evidence at the end of the observation window`}
+            width={960}
+            height={600}
+            sizes="(max-width: 720px) 100vw, 680px"
+            unoptimized
+            className="evidence-image"
+          />
+        </a>
+      ) : null}
+      <div className="evidence-links small">
+        {network ? <a href={`/api/evidence/${network.id}`} target="_blank" rel="noreferrer">Network evidence ↗</a> : null}
+        {consoleEvidence ? <a href={`/api/evidence/${consoleEvidence.id}`} target="_blank" rel="noreferrer">Console evidence ↗</a> : null}
+      </div>
+    </div>
+  );
+}
+
 function LinksSection({ detail }: { detail: CaseDetail }) {
   const links = detail.external_links;
   return (
@@ -329,7 +409,8 @@ function LinksSection({ detail }: { detail: CaseDetail }) {
         <dd>
           {links?.slack_root_ts ? (
             <>
-              thread <code>{links.slack_root_ts}</code> in <code>{links.slack_channel_id}</code>
+              {links.slack_permalink ? <a className="external-button" href={links.slack_permalink} target="_blank" rel="noreferrer">Open Slack ↗</a> : "Slack thread"}{" "}
+              <code>{links.slack_root_ts}</code>
             </>
           ) : (
             "thread not created yet"
@@ -339,7 +420,7 @@ function LinksSection({ detail }: { detail: CaseDetail }) {
         <dd>
           {links?.linear_issue_identifier ? (
             <>
-              {links.linear_issue_url ? <a href={links.linear_issue_url}>{links.linear_issue_identifier}</a> : links.linear_issue_identifier}{" "}
+              {links.linear_issue_url ? <a className="external-button" href={links.linear_issue_url} target="_blank" rel="noreferrer">Open {links.linear_issue_identifier} ↗</a> : links.linear_issue_identifier}{" "}
               <code>{links.linear_issue_id}</code>
             </>
           ) : (
@@ -350,7 +431,8 @@ function LinksSection({ detail }: { detail: CaseDetail }) {
         <dd>
           {links?.github_pr_number ? (
             <>
-              {links.github_repository}#{links.github_pr_number} @ <code>{links.github_commit_sha}</code>
+              {links.github_pr_url ? <a className="external-button" href={links.github_pr_url} target="_blank" rel="noreferrer">Open PR #{links.github_pr_number} ↗</a> : `${links.github_repository}#${links.github_pr_number}`}{" "}
+              @ <code>{links.github_commit_sha}</code>
             </>
           ) : (
             "no fix attempt"

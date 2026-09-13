@@ -121,6 +121,76 @@ h3 {
   font-size: 15px;
 }
 
+.phase-track {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  list-style: none;
+  margin: 18px 0 12px;
+  padding: 0;
+}
+
+.phase-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.phase-step::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 13px;
+  left: calc(50% + 13px);
+  width: calc(100% - 18px);
+  height: 2px;
+  background: var(--border);
+}
+
+.phase-step:last-child::after {
+  display: none;
+}
+
+.phase-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.phase-complete,
+.phase-current {
+  color: var(--active-fg);
+}
+
+.phase-complete .phase-dot,
+.phase-current .phase-dot {
+  border-color: var(--accent);
+  background: var(--active-bg);
+}
+
+.phase-current .phase-dot {
+  box-shadow: 0 0 0 4px var(--active-bg);
+}
+
+.phase-complete::after {
+  background: var(--accent);
+}
+
 .facts {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -209,6 +279,14 @@ h3 {
 }
 
 @media (max-width: 720px) {
+  .phase-track {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .phase-step::after {
+    display: none;
+  }
+
   .timeline-item {
     grid-template-columns: 1fr;
     gap: 2px;
@@ -253,6 +331,69 @@ th {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.same-test-note {
+  display: inline-block;
+  margin: 10px 0 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--active-bg);
+  color: var(--active-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-callout {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--bad-fg);
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+.console-callout code {
+  overflow-wrap: anywhere;
+}
+
+.evidence-summary {
+  margin-top: 12px;
+}
+
+.evidence-image-link {
+  display: block;
+  max-width: 680px;
+}
+
+.evidence-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.evidence-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.raw-evidence {
+  margin-top: 6px;
+}
+
+.external-button {
+  display: inline-block;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .code {

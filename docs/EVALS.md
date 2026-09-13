@@ -158,15 +158,15 @@ Run every row at H+20–22 and write down what actually happened. Record failure
 
 | Eval | Expected | Actual | Pass |
 |---|---|---|---|
-| 1. Real billing bug | `REPRODUCED` | TBD | TBD |
-| 2. Fixed build | `VERIFIED_FIXED` | TBD | TBD |
-| 3. Superficial fix | `STILL_BROKEN` | TBD | TBD |
-| 4. Ambiguous report | `SPEC_FAILED` | TBD | TBD |
-| 5. Staging unavailable | `INCONCLUSIVE` | TBD | TBD |
-| 6. Duplicate Slack event | one case | TBD | TBD |
-| 7. Interrupted Linear response | one issue | TBD | TBD |
-| 8. Duplicate merge webhook | one verification | TBD | TBD |
-| 8b. New SHA after STILL_BROKEN | accepted | TBD | TBD |
+| 1. Real billing bug | `REPRODUCED` | `REPRODUCED` | PASS |
+| 2. Fixed build | `VERIFIED_FIXED` | `VERIFIED_FIXED` | PASS |
+| 3. Superficial fix | `STILL_BROKEN` | `STILL_BROKEN` | PASS |
+| 4. Ambiguous report | `SPEC_FAILED` / inconclusive | `INCONCLUSIVE` | PASS |
+| 5. Staging unavailable | `INCONCLUSIVE` | `INCONCLUSIVE` | PASS |
+| 6. Duplicate Slack event | one case | `ONE_CASE` | PASS |
+| 7. Interrupted Linear response | one issue | `ONE_ISSUE` | PASS |
+| 8. Duplicate merge webhook | one verification | `ONE_VERIFICATION` | PASS |
+| 8b. New SHA after STILL_BROKEN | accepted | `accepted` | PASS |
 
 ## What not to count as success
 

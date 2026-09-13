@@ -1,4 +1,4 @@
-import { PlanChangeError, PlanChangeRequest, requestPlanChange } from "../../../server/billing";
+import { acmeBuildVariant, PlanChangeError, PlanChangeRequest, requestPlanChange } from "../../../server/billing";
 import { accountFromRequest, unauthenticatedResponse } from "../../../server/session";
 
 export const runtime = "nodejs";
@@ -20,6 +20,14 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: error.code }, { status: error.status });
     }
     console.error("[acmecloud] plan change failed", error);
-    return Response.json({ error: "internal_error" }, { status: 500 });
+    return Response.json(
+      {
+        error: "internal_error",
+        // The superficial revision clears its spinner while preserving the
+        // broken backend. Eval 3 must still fail on network + checkout facts.
+        ...(acmeBuildVariant() === "superficial" ? { clear_spinner: true } : {}),
+      },
+      { status: 500 },
+    );
   }
 }

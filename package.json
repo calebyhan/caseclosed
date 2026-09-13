@@ -13,7 +13,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "worker": "tsx src/server/worker-main.ts",
+    "worker": "node --env-file=.env.local node_modules/tsx/dist/cli.mjs src/server/worker-main.ts",
     "staging:dev": "npm run dev -w staging/acmecloud",
     "staging:build": "npm run build -w staging/acmecloud",
     "staging:start": "npm run start -w staging/acmecloud",
@@ -25,7 +25,11 @@
     "test": "npm run test:unit && npm run test:integration && npm run test:staging",
     "test:unit": "tsx --test \"tests/unit/**/*.test.ts\"",
     "test:integration": "tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
-    "test:staging": "tsx --test \"staging/acmecloud/tests/**/*.test.ts\""
+    "test:staging": "tsx --test \"staging/acmecloud/tests/**/*.test.ts\"",
+    "evals": "tsx evals/run.ts",
+    "evals:update-docs": "tsx evals/run.ts --update-docs",
+    "demo:reset": "CASECLOSED_DEMO_MODE=1 tsx scripts/demo-reset.ts",
+    "demo:preflight": "tsx scripts/demo-preflight.ts"
   },
   "dependencies": {
     "@google/genai": "2.22.0",

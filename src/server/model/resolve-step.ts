@@ -29,11 +29,15 @@ export interface StepResolver {
 const MAX_SNAPSHOT_CHARS = 12_000;
 
 export class GeminiStepResolver implements StepResolver {
+  private activeModel: string;
+
   constructor(
     private readonly client: ModelClient,
     private readonly models: ModelSelection,
     private readonly knownSecrets: readonly (string | null | undefined)[],
-  ) {}
+  ) {
+    this.activeModel = models.primary;
+  }
 
   async resolve(request: StepResolutionRequest): Promise<unknown> {
     const route = request.currentPath.split(/[?#]/)[0];
@@ -49,12 +53,23 @@ export class GeminiStepResolver implements StepResolver {
       previousFailures: request.previousFailures.map((failure) => redactSecrets(failure, this.knownSecrets)),
     });
 
-    const { text: response } = await callWithTimeout(
-      this.client,
-      { model: this.models.primary, system: STEP_RESOLUTION_SYSTEM, turns: [{ role: "user", parts: [{ text }] }], responseJsonSchema: BROWSER_ACTION_SCHEMA },
-      REPRODUCTION_BUDGETS.modelCallTimeoutMs,
-      request.signal,
-    );
+    let response: string;
+    try {
+      ({ text: response } = await callWithTimeout(
+        this.client,
+        { model: this.activeModel, system: STEP_RESOLUTION_SYSTEM, turns: [{ role: "user", parts: [{ text }] }], responseJsonSchema: BROWSER_ACTION_SCHEMA },
+        REPRODUCTION_BUDGETS.modelCallTimeoutMs,
+        request.signal,
+      ));
+    } catch (error) {
+      // The runner persists each resolution attempt before it reaches here.
+      // Switch only for the next attempt so fallback use remains visible in
+      // the model-call budget and never becomes an untracked retry.
+      if (error instanceof ModelCallError && error.kind === "provider" && this.models.fallback && this.activeModel === this.models.primary) {
+        this.activeModel = this.models.fallback;
+      }
+      throw error;
+    }
     try {
       return dropNullFields(JSON.parse(response));
     } catch {
