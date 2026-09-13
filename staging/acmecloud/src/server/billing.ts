@@ -14,7 +14,11 @@ export function acmeBuildVariant(): AcmeBuildVariant {
   if (process.env.ACME_BUILD_VARIANT && process.env.CASECLOSED_EVAL_MODE !== "1") {
     throw new Error("ACME_BUILD_VARIANT is only available in explicit eval mode");
   }
-  const value = process.env.ACME_BUILD_VARIANT ?? "buggy";
+  // Ordinary builds must ship the real annual price. Buggy and superficial
+  // revisions are available only to the explicit eval/demo harness.
+  const value = process.env.CASECLOSED_EVAL_MODE === "1"
+    ? (process.env.ACME_BUILD_VARIANT ?? "buggy")
+    : "fixed";
   if (value === "buggy" || value === "superficial" || value === "fixed") return value;
   throw new Error(`Unsupported ACME_BUILD_VARIANT: ${value}`);
 }

@@ -29,6 +29,8 @@ async function sessionCookie(): Promise<string> {
 
 before(() => {
   process.env.STAGING_TEST_SECRET = SECRET;
+  process.env.CASECLOSED_EVAL_MODE = "1";
+  process.env.ACME_BUILD_VARIANT = "buggy";
 });
 
 beforeEach(() => {
@@ -135,6 +137,8 @@ describe("eval-only build identity", () => {
     const previousVariant = process.env.ACME_BUILD_VARIANT;
     try {
       delete process.env.CASECLOSED_EVAL_MODE;
+      delete process.env.ACME_BUILD_VARIANT;
+      assert.equal(acmeBuildVariant(), "fixed");
       process.env.ACME_BUILD_VARIANT = "fixed";
       assert.throws(() => acmeBuildVariant(), /only available in explicit eval mode/);
       process.env.CASECLOSED_EVAL_MODE = "1";
