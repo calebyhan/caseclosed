@@ -88,19 +88,15 @@ describe("test session", () => {
   });
 });
 
-describe("POST /api/subscription (buggy build)", () => {
-  it("returns 500 for the monthly → annual upgrade and leaves the account unchanged", async () => {
+describe("POST /api/subscription", () => {
+  it("returns checkout for the monthly → annual upgrade", async () => {
     const cookie = await sessionCookie();
-    const originalError = console.error;
-    console.error = () => {};
-    try {
-      const response = await subscription(post("/api/subscription", { plan: "pro", billing_period: "annual" }, { cookie }));
-      assert.equal(response.status, 500);
-      assert.deepEqual(await response.json(), { error: "internal_error" });
-    } finally {
-      console.error = originalError;
-    }
-    assert.deepEqual(getAccount("pro_monthly_customer"), fixtureSeed("pro_monthly_customer"));
+    const response = await subscription(post("/api/subscription", { plan: "pro", billing_period: "annual" }, { cookie }));
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.kind, "checkout");
+    assert.equal(body.checkout_path, "/checkout");
+    assert.equal(getAccount("pro_monthly_customer")?.pending_change?.billing_period, "annual");
   });
 
   it("still handles the non-annual path successfully", async () => {
