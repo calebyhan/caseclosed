@@ -76,11 +76,12 @@ export function loadConfig(
   };
   paired("Slack", [["SLACK_BOT_TOKEN", values.SLACK_BOT_TOKEN], ["SLACK_SIGNING_SECRET", values.SLACK_SIGNING_SECRET]]);
   paired("Linear", [["LINEAR_API_KEY", values.LINEAR_API_KEY], ["LINEAR_TEAM_ID", values.LINEAR_TEAM_ID]]);
-  paired("GitHub", [
-    ["GITHUB_WEBHOOK_SECRET", values.GITHUB_WEBHOOK_SECRET],
-    ["GITHUB_TOKEN", values.GITHUB_TOKEN],
-    ["GITHUB_REPOSITORY", values.GITHUB_REPOSITORY],
-  ]);
+  // GitHub Actions always injects GITHUB_REPOSITORY. That value alone must
+  // not make an otherwise unconfigured CaseClosed integration invalid.
+  if ((values.GITHUB_WEBHOOK_SECRET || values.GITHUB_TOKEN) &&
+      !(values.GITHUB_WEBHOOK_SECRET && values.GITHUB_TOKEN && values.GITHUB_REPOSITORY)) {
+    throw new ConfigError(["GitHub: configure GITHUB_WEBHOOK_SECRET, GITHUB_TOKEN, GITHUB_REPOSITORY together"]);
+  }
   const resolve = (value: string) => (path.isAbsolute(value) ? value : path.resolve(rootDir, value));
   return {
     databasePath: values.DATABASE_PATH === ":memory:" ? ":memory:" : resolve(values.DATABASE_PATH),

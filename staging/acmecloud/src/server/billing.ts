@@ -3,7 +3,10 @@ import { getAccount, saveAccount, type Account, type BillingPeriod } from "./fix
 
 type Price = { plan: "pro"; billing_period: BillingPeriod; amount_cents: number; interval: "month" | "year" };
 
-const PRICE_BOOK: Price[] = [{ plan: "pro", billing_period: "monthly", amount_cents: 2_000, interval: "month" }];
+const PRICE_BOOK: Price[] = [
+  { plan: "pro", billing_period: "monthly", amount_cents: 2_000, interval: "month" },
+  { plan: "pro", billing_period: "annual", amount_cents: 20_000, interval: "year" },
+];
 
 export const PlanChangeRequest = z.object({
   plan: z.literal("pro"),
