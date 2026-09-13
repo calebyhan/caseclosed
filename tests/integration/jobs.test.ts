@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { eq } from "drizzle-orm";
+import { ReproSpec } from "../../src/contracts/repro";
 import { inTransaction } from "../../src/server/db/client";
-import { jobs, rejectedEvents, runs } from "../../src/server/db/schema";
+import { assertionResults, jobs, rejectedEvents, runs } from "../../src/server/db/schema";
 import { claimNext, enqueueUnique, JobConflictError } from "../../src/server/jobs/queue";
 import { recoverInterruptedJobs } from "../../src/server/jobs/recovery";
 import { JobWorker } from "../../src/server/jobs/worker";
 import { finalizeRun } from "../../src/server/services/runs";
 import { acquireProcessLock, LockHeldError } from "../../src/shared/process-lock";
 import { createTestDatabase, type TestDatabase } from "../helpers/database";
-import { caseWithSpec, driveToWaitingForFix, goldenPlanFor, intake, mergeDeployAndClaimVerification, rowCount, statusOf } from "../helpers/lifecycle";
+import { caseWithSpec, driveToWaitingForFix, goldenPlanFor, goldenSpecFor, intake, mergeDeployAndClaimVerification, rowCount, statusOf } from "../helpers/lifecycle";
+import { buggyObservations } from "../helpers/observations";
 
 let testDb: TestDatabase;
 beforeEach(() => {
@@ -100,6 +102,11 @@ describe("browser run identity", () => {
     assert.equal(run.infraErrorReason, "worker_interrupted");
     assert.equal(statusOf(db, caseId), "REPRO_INCONCLUSIVE");
     assert.equal(jobRow(job.id).status, "failed");
+    assert.equal(
+      testDb.handle.db.select().from(assertionResults).where(eq(assertionResults.runId, job.runId!)).all().length,
+      4,
+      "interrupted runs retain one explicit not-observed row per check",
+    );
     assert.equal(claimNext(db, ["reproduce"]), null);
     assert.equal(rowCount(db, runs), 1);
   });
@@ -117,7 +124,13 @@ describe("browser run identity", () => {
     const { db } = testDb.handle;
     const { caseId } = caseWithSpec(db);
     const job = claimNext(db, ["reproduce"])!;
-    assert.ok(finalizeRun(db, { runId: job.runId!, result: "REPRODUCED", plan: goldenPlanFor(caseId), job: { id: job.id, status: "completed" } }).ok);
+    assert.ok(finalizeRun(db, {
+      runId: job.runId!,
+      result: "REPRODUCED",
+      observations: buggyObservations(ReproSpec.parse(goldenSpecFor(caseId))),
+      plan: goldenPlanFor(caseId),
+      job: { id: job.id, status: "completed" },
+    }).ok);
 
     db.update(jobs).set({ status: "pending" }).where(eq(jobs.id, job.id)).run();
     assert.equal(claimNext(db, ["reproduce"]), null);

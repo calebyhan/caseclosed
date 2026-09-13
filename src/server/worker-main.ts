@@ -2,7 +2,8 @@ import { acquireProcessLock, LockHeldError, type ProcessLock } from "../shared/p
 import { loadConfig } from "./config";
 import { openMigratedDatabase } from "./db/migrate";
 import { recoverInterruptedJobs } from "./jobs/recovery";
-import { JobWorker, type JobHandlers } from "./jobs/worker";
+import { buildJobHandlers } from "./jobs/handlers";
+import { JobWorker } from "./jobs/worker";
 
 // Worker entry point (`npm run worker`). Never imported by Next.js routes.
 
@@ -29,9 +30,10 @@ log(
     `${recovery.failed.length} failed, ${recovery.unknownEffects.length} effect(s) marked unknown`,
 );
 
-// Handlers for generate_spec, reproduce, verify and deliver_effect are
-// registered by later phases. Unhandled job types stay pending, never claimed.
-const handlers: JobHandlers = {};
+// verify and deliver_effect are registered by later phases. Unhandled job
+// types stay pending, never claimed.
+const { handlers, disabled } = buildJobHandlers(config);
+for (const reason of disabled) log(`handler disabled: ${reason}`);
 const worker = new JobWorker(handle.db, handlers, { log });
 worker.start();
 log(`started on ${config.databasePath}; handling: ${worker.handledTypes.join(", ") || "(no handlers registered)"}`);

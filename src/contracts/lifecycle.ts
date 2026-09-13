@@ -55,6 +55,8 @@ export const InfraErrorReason = z.enum([
   "deployment_changed",
   "observations_incomplete",
   "evidence_write_failed",
+  "action_failed",
+  "navigation_blocked",
 ]);
 export type InfraErrorReason = z.infer<typeof InfraErrorReason>;
 

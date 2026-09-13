@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { SpecFailureKind } from "../../contracts/lifecycle";
 import { AppContext, ReproSpec } from "../../contracts/repro";
 import { canonicalJson, effectKeys, jobKeys, sha256Hash } from "../../domain/identity";
+import { validateReproSpec } from "../../domain/validate-repro-spec";
 import type { Db } from "../db/client";
 import { applyEventOrThrow, runGuarded, TransitionRejectedError, type GuardedOutcome } from "../db/repositories";
 import { cases, externalLinks, jobs, reproSpecs } from "../db/schema";
@@ -23,6 +24,7 @@ export type RecordSpecInput = {
   modelId?: string | null;
   generationModelCalls?: number;
   generationSchema?: unknown;
+  knownSecrets?: readonly (string | null | undefined)[];
 };
 
 /**
@@ -48,9 +50,16 @@ export function recordSpecCreated(
   if (spec.data.case_id !== input.caseId) issues.push(`case_id ${spec.data.case_id} does not match ${input.caseId}`);
   if (spec.data.app_context_hash !== appContextHash) issues.push("app_context_hash does not match the AppContext");
   if (spec.data.environment.id !== appContext.data.environment_id) issues.push("environment.id does not match the AppContext");
+  const validation = validateReproSpec(spec.data, appContext.data, {
+    caseId: input.caseId,
+    appContextHash,
+    knownSecrets: input.knownSecrets,
+  });
+  if (!validation.ok) issues.push(...validation.errors.map((error) => `${error.path || "spec"}: ${error.message}`));
   if (issues.length > 0) throw new SpecIdentityError(issues);
 
-  const specHash = sha256Hash(spec.data);
+  const validatedSpec = validation.ok ? validation.spec : spec.data;
+  const specHash = sha256Hash(validatedSpec);
   return runGuarded(db, (tx) => {
     const caseRow = tx.select({ environmentId: cases.environmentId }).from(cases).where(eq(cases.id, input.caseId)).get();
     const event = { type: "spec_created" as const, case_id: input.caseId, event_key: `spec-created:${input.caseId}` };
@@ -76,8 +85,8 @@ export function recordSpecCreated(
       .values({
         id: specId,
         caseId: input.caseId,
-        version: spec.data.version,
-        specJson: canonicalJson(spec.data),
+        version: validatedSpec.version,
+        specJson: canonicalJson(validatedSpec),
         specHash,
         appContextJson: canonicalJson(appContext.data),
         appContextHash,

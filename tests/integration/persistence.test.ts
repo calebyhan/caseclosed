@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { asc, eq } from "drizzle-orm";
+import { ReproSpec } from "../../src/contracts/repro";
 import { inTransaction } from "../../src/server/db/client";
 import { applyCaseEvent, applyEventOrThrow, runGuarded } from "../../src/server/db/repositories";
 import { claimNext } from "../../src/server/jobs/queue";
@@ -26,6 +27,7 @@ import {
   addFixAttempt,
   caseWithSpec,
   driveToWaitingForFix,
+  goldenPlanFor,
   goldenSpecFor,
   intake,
   mergeDeployAndClaimVerification,
@@ -33,6 +35,7 @@ import {
   stagingAppContext,
   statusOf,
 } from "../helpers/lifecycle";
+import { asVerification, buggyObservations, fixedObservations, superficialObservations } from "../helpers/observations";
 
 let testDb: TestDatabase;
 beforeEach(() => {
@@ -185,6 +188,16 @@ describe("spec persistence", () => {
     assert.equal(statusOf(db, caseId), "RECEIVED");
   });
 
+  it("refuses semantically invalid specs at the immutable persistence boundary", () => {
+    const { db } = testDb.handle;
+    const { caseId } = intake(db);
+    const invalid = goldenSpecFor(caseId);
+    (invalid.environment as Record<string, unknown>).fixture = "unknown_fixture";
+    assert.throws(() => recordSpecCreated(db, { caseId, spec: invalid, appContext: stagingAppContext() }), /unknown fixture/);
+    assert.equal(rowCount(db, reproSpecs), 0);
+    assert.equal(statusOf(db, caseId), "RECEIVED");
+  });
+
   it("records spec failure reasons and a Slack reply intent without a reproduction job", () => {
     const { db } = testDb.handle;
     const { caseId } = intake(db);
@@ -242,16 +255,26 @@ describe("guarded transitions", () => {
   it("walks the full persisted loop: superficial fix → STILL_BROKEN → WAITING_FOR_FIX → second fix → VERIFIED_FIXED", () => {
     const { db } = testDb.handle;
     const { caseId } = driveToWaitingForFix(db);
+    const spec = ReproSpec.parse(goldenSpecFor(caseId));
+    const plan = goldenPlanFor(caseId);
 
     const first = mergeDeployAndClaimVerification(db, caseId, 84, "sha-superficial");
     assert.equal(statusOf(db, caseId), "VERIFYING");
-    const broken = finalizeRun(db, { runId: first.runId, result: "STILL_BROKEN", assertionsPassed: 0, assertionsTotal: 2, signalsMatched: 1 });
+    const broken = finalizeRun(db, {
+      runId: first.runId,
+      result: "STILL_BROKEN",
+      observations: asVerification(superficialObservations(spec), plan, "sha-superficial"),
+    });
     assert.ok(broken.ok);
     assert.equal(broken.value.caseStatus, "WAITING_FOR_FIX");
 
     const second = mergeDeployAndClaimVerification(db, caseId, 85, "sha-real");
     assert.notEqual(second.runId, first.runId);
-    const fixed = finalizeRun(db, { runId: second.runId, result: "VERIFIED_FIXED", assertionsPassed: 2, assertionsTotal: 2, signalsMatched: 0 });
+    const fixed = finalizeRun(db, {
+      runId: second.runId,
+      result: "VERIFIED_FIXED",
+      observations: asVerification(fixedObservations(spec), plan, "sha-real"),
+    });
     assert.ok(fixed.ok);
     assert.equal(statusOf(db, caseId), "VERIFIED_FIXED");
 
@@ -292,10 +315,49 @@ describe("guarded transitions", () => {
     const { db } = testDb.handle;
     const { caseId } = driveToWaitingForFix(db);
     const { runId } = mergeDeployAndClaimVerification(db, caseId, 84, "sha-a");
-    assert.ok(finalizeRun(db, { runId, result: "VERIFIED_FIXED" }).ok);
+    const observations = asVerification(fixedObservations(ReproSpec.parse(goldenSpecFor(caseId))), goldenPlanFor(caseId), "sha-a");
+    assert.ok(finalizeRun(db, { runId, result: "VERIFIED_FIXED", observations }).ok);
     const same = finalizeRun(db, { runId, result: "VERIFIED_FIXED" });
     assert.ok(same.ok && same.value.alreadyFinalized);
     assert.throws(() => finalizeRun(db, { runId, result: "STILL_BROKEN" }), /already finalized/);
+  });
+
+  it("cannot finalize VERIFIED_FIXED from caller-supplied counts without replay observations", () => {
+    const { db } = testDb.handle;
+    const { caseId } = driveToWaitingForFix(db);
+    const { runId } = mergeDeployAndClaimVerification(db, caseId, 84, "sha-a");
+    assert.throws(
+      () => finalizeRun(db, { runId, result: "VERIFIED_FIXED", assertionsPassed: 2, assertionsTotal: 2, signalsMatched: 0 }),
+      /deterministic observations/i,
+    );
+    assert.equal(statusOf(db, caseId), "VERIFYING");
+  });
+
+  it("refuses browser action evidence that differs from deterministic observations", () => {
+    const { db } = testDb.handle;
+    const { caseId } = driveToWaitingForFix(db);
+    const { runId } = mergeDeployAndClaimVerification(db, caseId, 84, "sha-a");
+    const observations = asVerification(
+      fixedObservations(ReproSpec.parse(goldenSpecFor(caseId))),
+      goldenPlanFor(caseId),
+      "sha-a",
+    );
+    const actions = observations.actions.map((record) => ({
+      seq: record.seq,
+      stepId: record.step_id,
+      action: { ...record.action, resolution: record.resolution, ...(record.locator_used ? { locator_used: record.locator_used } : {}) },
+      ok: record.ok,
+      error: record.error ?? null,
+      startedAt: 1_000 + record.started_at_ms,
+      finishedAt: 1_000 + record.finished_at_ms,
+    }));
+    actions[0] = { ...actions[0]!, stepId: "forged-step" };
+
+    assert.throws(
+      () => finalizeRun(db, { runId, result: "VERIFIED_FIXED", observations, actions }),
+      /action evidence does not match/i,
+    );
+    assert.equal(statusOf(db, caseId), "VERIFYING");
   });
 
   it("requires a valid resolved plan to finalize REPRODUCED", () => {
@@ -303,8 +365,33 @@ describe("guarded transitions", () => {
     const { caseId } = caseWithSpec(db);
     const job = claimNext(db, ["reproduce"]);
     assert.ok(job?.runId);
-    assert.throws(() => finalizeRun(db, { runId: job.runId!, result: "REPRODUCED" }), /resolved plan/);
+    assert.throws(
+      () => finalizeRun(db, {
+        runId: job.runId!,
+        result: "REPRODUCED",
+        observations: buggyObservations(ReproSpec.parse(goldenSpecFor(caseId))),
+      }),
+      /resolved plan/,
+    );
     assert.equal(statusOf(db, caseId), "REPRODUCING");
     assert.equal(db.select().from(runs).where(eq(runs.id, job.runId!)).get()!.status, "running");
+  });
+
+  it("refuses to promote a plan that skips or substitutes a ReproSpec step", () => {
+    const { db } = testDb.handle;
+    const { caseId } = caseWithSpec(db);
+    const job = claimNext(db, ["reproduce"]);
+    assert.ok(job?.runId);
+    const plan = { ...goldenPlanFor(caseId), actions: [goldenPlanFor(caseId).actions[1]!] };
+    assert.throws(
+      () => finalizeRun(db, {
+        runId: job.runId!,
+        result: "REPRODUCED",
+        observations: buggyObservations(ReproSpec.parse(goldenSpecFor(caseId))),
+        plan,
+      }),
+      /one action for every spec step|step order/i,
+    );
+    assert.equal(statusOf(db, caseId), "REPRODUCING");
   });
 });

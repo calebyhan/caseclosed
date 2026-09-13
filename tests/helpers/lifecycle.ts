@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { count, eq } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { CaseStatus } from "../../src/contracts/lifecycle";
+import { ReproSpec, type ResolvedPlan } from "../../src/contracts/repro";
 import type { CaseEvent } from "../../src/domain/state-machine";
 import { inTransaction, type Db } from "../../src/server/db/client";
 import { applyCaseEvent } from "../../src/server/db/repositories";
@@ -12,6 +13,7 @@ import { claimNext, enqueueUnique } from "../../src/server/jobs/queue";
 import { createCaseFromReport, type IntakeResult } from "../../src/server/services/intake";
 import { finalizeRun } from "../../src/server/services/runs";
 import { recordSpecCreated } from "../../src/server/services/spec-lifecycle";
+import { buggyObservations } from "./observations";
 
 // Authorized lifecycle fixtures for temporary test databases only. Linear and
 // GitHub facts are inserted directly because those integrations are not built yet.
@@ -24,7 +26,7 @@ export function goldenSpecFor(caseId: string): Record<string, unknown> {
   return { ...JSON.parse(fs.readFileSync("fixtures/repro-spec.valid.json", "utf8")), case_id: caseId };
 }
 
-export function goldenPlanFor(caseId: string) {
+export function goldenPlanFor(caseId: string): ResolvedPlan {
   return {
     case_id: caseId,
     spec_version: "1" as const,
@@ -104,6 +106,7 @@ export function driveToWaitingForFix(db: Db): { caseId: string; reproductionRunI
     assertionsPassed: 0,
     assertionsTotal: 2,
     signalsMatched: 2,
+    observations: buggyObservations(ReproSpec.parse(goldenSpecFor(caseId))),
     plan: goldenPlanFor(caseId),
     job: { id: job.id, status: "completed" },
   });
