@@ -1,0 +1,25 @@
+{
+  "environment_id": "staging",
+  "base_url": "http://localhost:3001",
+  "routes": [
+    { "path": "/dashboard", "name": "Dashboard", "description": "Post-login landing page" },
+    { "path": "/settings/billing", "name": "Billing", "description": "Plan and billing period management" },
+    { "path": "/checkout", "name": "Checkout", "description": "Payment confirmation for a plan change" }
+  ],
+  "api_endpoints": [
+    { "method": "POST", "path": "/api/subscription", "description": "Applies a plan or billing-period change" },
+    { "method": "GET", "path": "/api/account", "description": "Returns current plan and billing period" }
+  ],
+  "landmarks": [
+    { "route": "/settings/billing", "role": "radio", "name": "Monthly", "description": "Selects monthly billing" },
+    { "route": "/settings/billing", "role": "radio", "name": "Annual", "description": "Selects annual billing" },
+    { "route": "/settings/billing", "role": "button", "name": "Upgrade", "description": "Submits the plan change" },
+    { "route": "/settings/billing", "role": "status", "name": "Loading", "description": "Spinner shown while the change is in flight" },
+    { "route": "/checkout", "role": "heading", "name": "Checkout", "description": "Rendered when the change succeeds" },
+    { "route": "/checkout", "role": "button", "name": "Confirm payment", "description": "Confirms the pending plan change" },
+    { "route": "/checkout", "role": "heading", "name": "Upgrade complete", "description": "Rendered after payment confirmation" }
+  ],
+  "fixtures": [
+    { "id": "pro_monthly_customer", "description": "Authenticated Pro customer on monthly billing" }
+  ]
+}
