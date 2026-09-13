@@ -76,7 +76,7 @@ Requires Node.js 22+. Copy `.env.example` to `.env.local` and set `STAGING_TEST_
 
 Staging test endpoints require the `X-CaseClosed-Secret` header: `POST /api/test/reset { "fixture": "pro_monthly_customer" }` restores the seeded account, and `POST /api/test/session { "fixture": "pro_monthly_customer" }` sets the internal test-session cookie (no login workflow).
 
-Implemented so far: the foundation layer (canonical SQLite schema, guarded state machine, durable job queue with restart recovery, side-effect ledger, case API/page, staging app). Spec generation, browser runs, and Slack/Linear/GitHub integrations are not implemented yet.
+Implemented: canonical SQLite state and guarded transitions, durable jobs and side-effect reconciliation, Gemini spec generation, Playwright reproduction and literal zero-model verification replay, Slack intake/thread updates, Linear issue/comments/labels, GitHub merge association/comments, and deployment-gated verification. Real service credentials, webhook URLs, provider labels, and an exact-SHA staging deployment remain environment setup rather than checked-in secrets.
 
 ## Docs
 

@@ -65,6 +65,7 @@ export const effectKeys = {
   slackReproResult: (runId: string) => `slack:repro-result:${runId}`,
   slackLinearLink: (caseId: string) => `slack:linear-link:${caseId}`,
   slackFixMerged: (attemptId: string) => `slack:fix-merged:${attemptId}`,
+  slackVerificationStarted: (attemptId: string, generation: string = "initial") => `slack:verification-started:${attemptId}:${generation}`,
   slackVerifyResult: (runId: string) => `slack:verify-result:${runId}`,
   linearCreate: (caseId: string) => `linear:create:${caseId}`,
   linearVerifyComment: (runId: string) => `linear:verify-comment:${runId}`,

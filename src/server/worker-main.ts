@@ -30,8 +30,8 @@ log(
     `${recovery.failed.length} failed, ${recovery.unknownEffects.length} effect(s) marked unknown`,
 );
 
-// verify and deliver_effect are registered by later phases. Unhandled job
-// types stay pending, never claimed.
+// Handlers are registered only when their concrete credentials/dependencies
+// are configured. Unhandled job types stay pending, never claimed.
 const { handlers, disabled } = buildJobHandlers(config);
 for (const reason of disabled) log(`handler disabled: ${reason}`);
 const worker = new JobWorker(handle.db, handlers, { log });

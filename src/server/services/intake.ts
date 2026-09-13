@@ -80,16 +80,6 @@ export function createCaseFromReport(db: Db, input: CaseIntake, now: number = Da
       .run();
     tx.insert(externalLinks).values({ caseId, slackChannelId: channelId, updatedAt: now }).run();
 
-    const specJob = enqueueUnique(
-      tx,
-      {
-        key: jobKeys.spec(caseId),
-        type: "generate_spec",
-        caseId,
-        payload: { case_id: caseId, report, environment_id: input.environmentId },
-      },
-      now,
-    );
     ensureEffect(
       tx,
       {
@@ -98,6 +88,18 @@ export function createCaseFromReport(db: Db, input: CaseIntake, now: number = Da
         caseId,
         destination: { team_id: teamId, channel_id: channelId },
         payload: { case_id: caseId, reporter_user_id: userId },
+      },
+      now,
+    );
+    // Reserve the root delivery before slower model/browser work so the case
+    // thread appears promptly and every later reply has a canonical parent.
+    const specJob = enqueueUnique(
+      tx,
+      {
+        key: jobKeys.spec(caseId),
+        type: "generate_spec",
+        caseId,
+        payload: { case_id: caseId, report, environment_id: input.environmentId },
       },
       now,
     );

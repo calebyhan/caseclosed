@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ReproductionRunResult } from "../../contracts/run";
-import type { ReproductionRunOutput } from "../browser/runner";
+import type { ReproductionRunResult, VerificationRunResult } from "../../contracts/run";
+import type { ReproductionRunOutput, VerificationRunOutput } from "../browser/runner";
 
 // Writes per-run artifacts under ARTIFACT_DIR/<run_id>/. Each file is written
 // to a temporary name and renamed, so a finalized evidence row never points at
@@ -55,7 +55,10 @@ export async function writeRunEvidence(artifactDir: string, runId: string, artif
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 /** The standard reproduction evidence bundle. Missing screenshots are recorded as absent, never fabricated. */
-export function reproductionArtifacts(output: ReproductionRunOutput, result: ReproductionRunResult): EvidenceArtifact[] {
+export function reproductionArtifacts(
+  output: ReproductionRunOutput | VerificationRunOutput,
+  result: ReproductionRunResult | VerificationRunResult,
+): EvidenceArtifact[] {
   const { observations, screenshots } = output;
   const artifacts: EvidenceArtifact[] = [
     { kind: "network", fileName: "network.json", mimeType: "application/json", content: json({ responses: observations.network, request_failures: observations.request_failures }) },
@@ -84,7 +87,7 @@ export function reproductionArtifacts(output: ReproductionRunOutput, result: Rep
   return artifacts;
 }
 
-export function resultSummary(result: ReproductionRunResult): Omit<ReproductionRunResult, "assertions" | "signals"> {
+export function resultSummary(result: ReproductionRunResult | VerificationRunResult) {
   return {
     result: result.result,
     assertions_passed: result.assertions_passed,

@@ -66,6 +66,14 @@ export function buggyApp(): FakeApp {
   ]);
 }
 
+/** Superficial fix: spinner clears, but POST still fails and checkout never appears. */
+export function superficialApp(): FakeApp {
+  return billingApp((at) => [
+    { at: at + 100, apply: (app) => app.network.push({ method: "POST", url: `${STAGING}/api/subscription`, status: 500, timestamp_ms: at + 100, same_origin: true }) },
+    { at: at + 300, apply: (app) => app.elements.delete(key("status", "Loading")) },
+  ]);
+}
+
 /** Fixed build: POST 200 then navigation to checkout; the spinner unmounts. */
 export function fixedApp(): FakeApp {
   return billingApp((at) => [

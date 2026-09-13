@@ -12,7 +12,7 @@ import { AppContext, BrowserAction, ReproSpec, ResolvedPlan } from "../../contra
 import { REPRODUCTION_BUDGETS, type ReproductionRunResult, type RunObservations, type VerificationRunResult } from "../../contracts/run";
 import { classifyReproduction, classifyVerification } from "../../domain/classify";
 import { validateProposedAction } from "../../domain/action-policy";
-import { canonicalJson, sha256Hash } from "../../domain/identity";
+import { canonicalJson, effectKeys, sha256Hash } from "../../domain/identity";
 import { inTransaction, type Db, type Tx } from "../db/client";
 import {
   applyEventOrThrow,
@@ -21,7 +21,8 @@ import {
   TransitionRejectedError,
   type GuardedOutcome,
 } from "../db/repositories";
-import { assertionResults, browserActions, cases, evidence, jobs, reproSpecs, resolvedPlans, runs } from "../db/schema";
+import { assertionResults, browserActions, cases, evidence, externalLinks, fixAttempts, jobs, reproSpecs, resolvedPlans, runs } from "../db/schema";
+import { ensureEffect } from "../side-effects/ledger";
 
 type BrowserJob = {
   id: string;
@@ -149,7 +150,7 @@ export type FinalizedRun = { caseStatus: CaseStatus; alreadyFinalized: boolean }
  * Run finalization (atomic unit 4, foundation subset): result fields, plan
  * promotion on REPRODUCED, and guarded transitions. A STILL_BROKEN verdict is
  * recorded and then immediately returns the case to WAITING_FOR_FIX.
- * Assertion/evidence rows and projection intents are added by later phases.
+ * Assertion/evidence rows and projection intents are committed in the same unit.
  */
 export function finalizeRun(db: Db, input: RunFinalization, now: number = Date.now()): GuardedOutcome<FinalizedRun> {
   return runGuarded(db, (tx) => {
@@ -265,6 +266,8 @@ export function finalizeRun(db: Db, input: RunFinalization, now: number = Date.n
         .run();
     }
 
+    ensureRunProjectionEffects(tx, run, resultValue, deterministic, now);
+
     if (input.job) {
       tx.update(jobs)
         .set({ status: input.job.status, lastError: input.job.error ?? null, finishedAt: now, updatedAt: now })
@@ -273,6 +276,108 @@ export function finalizeRun(db: Db, input: RunFinalization, now: number = Date.n
     }
     return { caseStatus, alreadyFinalized: false };
   });
+}
+
+function ensureRunProjectionEffects(
+  tx: Tx,
+  run: typeof runs.$inferSelect,
+  result: RunResultValue,
+  deterministic: DeterministicResult | null,
+  now: number,
+): void {
+  const caseRow = tx.select().from(cases).where(eq(cases.id, run.caseId)).get()!;
+  const links = tx.select().from(externalLinks).where(eq(externalLinks.caseId, run.caseId)).get();
+  const specRow = tx.select().from(reproSpecs).where(eq(reproSpecs.id, run.specId)).get()!;
+  const spec = ReproSpec.parse(JSON.parse(specRow.specJson));
+  const summary = {
+    case_id: run.caseId,
+    result,
+    report: caseRow.report,
+    goal: spec.goal,
+    steps: spec.steps,
+    assertions: deterministic?.assertions ?? [],
+    failure_signals: deterministic?.signals ?? [],
+    evidence_summary: deterministic
+      ? `${deterministic.assertions_passed}/${deterministic.assertions_total} required assertions passed; ${deterministic.signals_matched} original failure signal(s) matched.`
+      : "The verification experiment did not produce complete observations.",
+    infra_error_reason: deterministic?.infra_error_reason ?? null,
+  };
+  const slackDestination = {
+    channel_id: links?.slackChannelId ?? caseRow.sourceChannelId,
+    root_effect_key: effectKeys.slackCaseCreated(caseRow.sourceTriggerId),
+  };
+
+  if (run.runType === "reproduction") {
+    ensureEffect(tx, {
+      key: effectKeys.slackReproResult(run.id),
+      type: "slack.reply",
+      caseId: run.caseId,
+      runId: run.id,
+      destination: slackDestination,
+      payload: summary,
+    }, now);
+    if (result === "REPRODUCED") {
+      ensureEffect(tx, {
+        key: effectKeys.linearCreate(run.caseId),
+        type: "linear.create_issue",
+        caseId: run.caseId,
+        runId: run.id,
+        destination: {},
+        payload: { ...summary, labels: ["caseclosed-reproduced"] },
+      }, now);
+    }
+    return;
+  }
+
+  const attempt = run.attemptId
+    ? tx.select().from(fixAttempts).where(eq(fixAttempts.id, run.attemptId)).get()
+    : null;
+  if (!attempt) throw new Error(`Verification run ${run.id} has no fix attempt`);
+  const verificationPayload = { ...summary, pr_number: attempt.prNumber, commit_sha: attempt.commitSha };
+  ensureEffect(tx, {
+    key: effectKeys.githubVerifyComment(run.id),
+    type: "github.verification_comment",
+    caseId: run.caseId,
+    runId: run.id,
+    attemptId: attempt.id,
+    destination: { repository: attempt.repository, pr_number: attempt.prNumber },
+    payload: verificationPayload,
+  }, now);
+  if (links?.linearIssueId) {
+    ensureEffect(tx, {
+      key: effectKeys.linearVerifyComment(run.id),
+      type: "linear.verification_comment",
+      caseId: run.caseId,
+      runId: run.id,
+      attemptId: attempt.id,
+      destination: { issue_id: links.linearIssueId },
+      payload: verificationPayload,
+    }, now);
+    if (result !== "INCONCLUSIVE") {
+      ensureEffect(tx, {
+        key: effectKeys.linearLabels(run.id),
+        type: "linear.apply_labels",
+        caseId: run.caseId,
+        runId: run.id,
+        attemptId: attempt.id,
+        destination: { issue_id: links.linearIssueId },
+        payload: {
+          result,
+          add: [result === "VERIFIED_FIXED" ? "caseclosed-verified" : "caseclosed-still-broken"],
+          remove: [result === "VERIFIED_FIXED" ? "caseclosed-still-broken" : "caseclosed-verified"],
+        },
+      }, now);
+    }
+  }
+  ensureEffect(tx, {
+    key: effectKeys.slackVerifyResult(run.id),
+    type: "slack.reply",
+    caseId: run.caseId,
+    runId: run.id,
+    attemptId: attempt.id,
+    destination: slackDestination,
+    payload: verificationPayload,
+  }, now);
 }
 
 function actionsBoundToObservations(

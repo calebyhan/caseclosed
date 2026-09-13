@@ -49,6 +49,19 @@ export type ReproductionRunOutput = {
   commitSha: string | null;
 };
 
+export type VerificationInput = Omit<
+  ReproductionInput,
+  "resolver" | "onModelCall"
+> & {
+  plan: ResolvedPlan;
+  planHash: string;
+  expectedCommitSha: string;
+};
+
+export type VerificationRunOutput = Omit<ReproductionRunOutput, "planActions"> & {
+  planActions: ResolvedPlan["actions"];
+};
+
 class RunAborted extends Error {
   constructor(
     public readonly reason: InfraErrorReason,
@@ -69,15 +82,35 @@ export function systemClock(): RunClock {
 type DomCheck = { id: string; kind: "assertion" | "signal"; target: ProbeTarget; deadlineMs: number };
 
 export async function runReproduction(input: ReproductionInput): Promise<ReproductionRunOutput> {
+  return runBrowserExperiment(input, null);
+}
+
+/**
+ * Replays the persisted plan literally. This function deliberately has no
+ * resolver/model dependency: a missing target is an inconclusive experiment,
+ * never permission to generate a different action.
+ */
+export async function runVerification(input: VerificationInput): Promise<VerificationRunOutput> {
+  return runBrowserExperiment(input, {
+    plan: input.plan,
+    planHash: input.planHash,
+    expectedCommitSha: input.expectedCommitSha,
+  });
+}
+
+async function runBrowserExperiment(
+  input: ReproductionInput | VerificationInput,
+  replay: { plan: ResolvedPlan; planHash: string; expectedCommitSha: string } | null,
+): Promise<ReproductionRunOutput> {
   const budgets = { ...REPRODUCTION_BUDGETS, ...input.budgets };
   const clock = input.clock ?? systemClock();
   const { spec, appContext } = input;
 
   const observations: RunObservations = {
-    run_type: "reproduction",
+    run_type: replay ? "verification" : "reproduction",
     spec_hash: input.specHash,
     app_context_hash: spec.app_context_hash,
-    plan_hash: null,
+    plan_hash: replay?.planHash ?? null,
     health_before: null,
     health_after: null,
     duration_ms: 0,
@@ -163,6 +196,12 @@ export async function runReproduction(input: ReproductionInput): Promise<Reprodu
     if (!health.ok) throw new RunAborted(health.reason, health.detail);
     output.commitSha = health.commitSha;
     if (!health.commitSha) throw new RunAborted("staging_unreachable", "health check returned no commit SHA");
+    if (replay && health.commitSha !== replay.expectedCommitSha) {
+      throw new RunAborted(
+        "deployment_changed",
+        `staging reports ${health.commitSha}, expected deployed merge ${replay.expectedCommitSha}`,
+      );
+    }
     observations.health_before = { commit_sha: health.commitSha };
 
     const reset = await bounded(input.environment.resetFixture(spec.environment.fixture, runController.signal));
@@ -194,6 +233,34 @@ export async function runReproduction(input: ReproductionInput): Promise<Reprodu
     let experimentStarted = false;
 
     for (const [stepIndex, step] of spec.steps.entries()) {
+      if (replay) {
+        const planned = replay.plan.actions[stepIndex];
+        if (!planned || planned.step_id !== step.id) {
+          throw new RunAborted("environment_changed", `saved plan does not contain the original step ${step.id} at index ${stepIndex}`);
+        }
+        const currentPath = pathOf(browser.currentUrl());
+        const policy = validateProposedAction(planned.action, appContext, input.knownSecrets, currentPath);
+        if (!policy.ok) throw new RunAborted("environment_changed", `saved action for ${step.id} is invalid: ${policy.error}`);
+        if (!experimentStarted) {
+          browser.markExperimentStart();
+          experimentStarted = true;
+        }
+        const action = policy.action;
+        const execution = await recordAction(step.id, action, "runner", () =>
+          action.type === "goto" ? browser.goto(action.path) : browser.execute(action),
+        );
+        checkFatal();
+        if (!execution.ok) {
+          throw new RunAborted(
+            execution.navigationBlocked ? "navigation_blocked" : execution.failure === "not_executed" ? "step_unresolvable" : "action_failed",
+            `saved action for ${step.id} failed: ${execution.error}`,
+          );
+        }
+        output.planActions.push(planned);
+        observations.steps_completed.push(step.id);
+        continue;
+      }
+
       const failures: string[] = [];
       for (;;) {
         let resolution: ActionResolution = "model";
@@ -210,11 +277,11 @@ export async function runReproduction(input: ReproductionInput): Promise<Reprodu
         checkFatal();
 
         observations.model_calls += 1;
-        await input.onModelCall(observations.model_calls);
+        await (input as ReproductionInput).onModelCall(observations.model_calls);
         let proposal: unknown;
         try {
           proposal = await bounded(
-            input.resolver.resolve({
+            (input as ReproductionInput).resolver.resolve({
               goal: spec.goal,
               step,
               stepIndex,
@@ -266,7 +333,7 @@ export async function runReproduction(input: ReproductionInput): Promise<Reprodu
     if (!healthAfter.ok) throw new RunAborted(healthAfter.reason, `post-run ${healthAfter.detail}`);
     if (!healthAfter.commitSha) throw new RunAborted("staging_unreachable", "post-run health check returned no commit SHA");
     observations.health_after = { commit_sha: healthAfter.commitSha };
-    if (healthAfter.commitSha !== output.commitSha) {
+    if (healthAfter.commitSha !== output.commitSha || (replay && healthAfter.commitSha !== replay.expectedCommitSha)) {
       throw new RunAborted("deployment_changed", `staging changed from ${output.commitSha} to ${healthAfter.commitSha} during the run`);
     }
   } catch (error) {
