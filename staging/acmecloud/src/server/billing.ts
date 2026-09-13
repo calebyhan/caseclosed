@@ -21,6 +21,7 @@ export function acmeBuildVariant(): AcmeBuildVariant {
 
 const PRICE_BOOK: Price[] = [
   { plan: "pro", billing_period: "monthly", amount_cents: 2_000, interval: "month" },
+  { plan: "pro", billing_period: "annual", amount_cents: 20_000, interval: "year" },
 ];
 
 export const PlanChangeRequest = z.object({
@@ -46,9 +47,10 @@ export class PlanChangeError extends Error {
 }
 
 function priceFor(plan: "pro", period: BillingPeriod): Price {
-  if (period === "annual" && acmeBuildVariant() === "fixed") {
-    return { plan: "pro", billing_period: "annual", amount_cents: 20_000, interval: "year" };
-  }
+  // The price-book entry is the real fix. Controlled buggy and superficial
+  // revisions deliberately hide it so the demo/evals can exercise the same
+  // failure before deploying the fixed revision.
+  if (period === "annual" && acmeBuildVariant() !== "fixed") return undefined!;
   return PRICE_BOOK.find((price) => price.plan === plan && price.billing_period === period)!;
 }
 
