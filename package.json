@@ -1,0 +1,49 @@
+{
+  "name": "caseclosed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "staging/acmecloud"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "worker": "tsx src/server/worker-main.ts",
+    "staging:dev": "npm run dev -w staging/acmecloud",
+    "staging:build": "npm run build -w staging/acmecloud",
+    "staging:start": "npm run start -w staging/acmecloud",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed-dev": "tsx scripts/seed-dev-case.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p staging/acmecloud",
+    "lint": "eslint .",
+    "test": "npm run test:unit && npm run test:integration && npm run test:staging",
+    "test:unit": "tsx --test \"tests/unit/**/*.test.ts\"",
+    "test:integration": "tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
+    "test:staging": "tsx --test \"staging/acmecloud/tests/**/*.test.ts\""
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.2",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.5.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.5",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3"
+  }
+}

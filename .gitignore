@@ -34,3 +34,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# caseclosed runtime state (SQLite + WAL files, artifacts, auth state, locks, builds)
+/var/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# nested Next.js app output
+/staging/acmecloud/.next/
+/staging/acmecloud/node_modules/
