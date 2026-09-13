@@ -1,0 +1,24 @@
+{
+  "version": "1",
+  "case_id": "CC-0042",
+  "app_context_hash": "sha256:98e7a1bbe2f8a84c568f0b256f9c8ecb783d9c59dca1b417daca1fa2ede143fc",
+  "environment": {
+    "id": "staging",
+    "start_path": "/settings/billing",
+    "fixture": "pro_monthly_customer"
+  },
+  "goal": "Reproduce failure when changing billing from monthly to annual",
+  "steps": [
+    { "id": "step_1", "intent": "Select annual billing" },
+    { "id": "step_2", "intent": "Click Upgrade" }
+  ],
+  "assertions": [
+    { "id": "a1", "type": "network_status", "method": "POST", "url_contains": "/api/subscription", "min": 200, "max": 299 },
+    { "id": "a2", "type": "element_visible", "role": "heading", "name": "Checkout", "within_ms": 5000 }
+  ],
+  "failure_signals": [
+    { "id": "f1", "type": "network_status", "method": "POST", "url_contains": "/api/subscription", "min": 500, "max": 599 },
+    { "id": "f2", "type": "element_still_visible_after_ms", "role": "status", "name": "Loading", "after_ms": 3000 }
+  ],
+  "evidence": { "screenshots": true, "network": true, "console": true, "actions": true }
+}

@@ -1,0 +1,93 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1b1f24;
+  background: #f4f5f7;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 12px 32px;
+  background: #1f2a44;
+  color: #fff;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 20px;
+}
+
+.topbar a {
+  color: #d6def0;
+  text-decoration: none;
+}
+
+.logo {
+  font-weight: 700;
+}
+
+.content {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 24px 32px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e0e3e8;
+}
+
+fieldset {
+  border: 1px solid #e0e3e8;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+button {
+  font: inherit;
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 0;
+  background: #3056d3;
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-left: 12px;
+  vertical-align: middle;
+  border: 3px solid #cfd6e6;
+  border-top-color: #3056d3;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.notice {
+  color: #4a5361;
+}
