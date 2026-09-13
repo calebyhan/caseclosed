@@ -57,6 +57,27 @@ The LLM interprets intent. **Code establishes truth.**
 - Linear API
 - GitHub API + webhooks
 
+## Development
+
+Requires Node.js 22+. Copy `.env.example` to `.env.local` and set `STAGING_TEST_SECRET`.
+
+| Command | Purpose |
+|---|---|
+| `npm install` | Install both workspaces from the lockfile |
+| `npm run db:migrate` | Create/upgrade the SQLite database (`DATABASE_PATH`, WAL) |
+| `npm run dev` | CaseClosed API + case page on `:3000` |
+| `npm run worker` | The single job worker (refuses to start if another holds `var/locks/worker.lock`) |
+| `npm run staging:dev` | AcmeCloud staging app on `:3001` (buggy annual upgrade) |
+| `npm run db:seed-dev` | Dev only: create one case through the real intake/spec services |
+| `npm run db:generate` | Generate a migration after changing `src/server/db/schema.ts` |
+| `npm run typecheck` / `npm run lint` | TypeScript and ESLint for both apps |
+| `npm test` | Unit, integration (temporary SQLite DBs), and staging tests |
+| `npm run build` / `npm run staging:build` | Production builds |
+
+Staging test endpoints require the `X-CaseClosed-Secret` header: `POST /api/test/reset { "fixture": "pro_monthly_customer" }` restores the seeded account, and `POST /api/test/session { "fixture": "pro_monthly_customer" }` sets the internal test-session cookie (no login workflow).
+
+Implemented so far: the foundation layer (canonical SQLite schema, guarded state machine, durable job queue with restart recovery, side-effect ledger, case API/page, staging app). Spec generation, browser runs, and Slack/Linear/GitHub integrations are not implemented yet.
+
 ## Docs
 
 Read in this order.
